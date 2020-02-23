@@ -17,6 +17,8 @@
 package com.google.cloud.spanner;
 
 import com.google.api.core.ApiFunction;
+import com.google.api.gax.core.ExecutorProvider;
+import com.google.api.gax.core.FixedExecutorProvider;
 import com.google.api.gax.grpc.GrpcInterceptorProvider;
 import com.google.api.gax.retrying.RetrySettings;
 import com.google.api.gax.rpc.TransportChannelProvider;
@@ -36,11 +38,13 @@ import com.google.cloud.spanner.spi.v1.GapicSpannerRpc;
 import com.google.cloud.spanner.spi.v1.SpannerRpc;
 import com.google.cloud.spanner.v1.SpannerSettings;
 import com.google.cloud.spanner.v1.stub.SpannerStubSettings;
+import com.google.common.annotations.VisibleForTesting;
 import com.google.common.base.MoreObjects;
 import com.google.common.base.Preconditions;
 import com.google.common.collect.ImmutableMap;
 import com.google.common.collect.ImmutableSet;
 import com.google.spanner.v1.ExecuteSqlRequest.QueryOptions;
+import com.google.common.util.concurrent.ThreadFactoryBuilder;
 import io.grpc.CallCredentials;
 import io.grpc.ManagedChannelBuilder;
 import java.io.IOException;
@@ -51,6 +55,10 @@ import java.util.Map;
 import java.util.Map.Entry;
 import java.util.Set;
 import javax.annotation.Nonnull;
+import java.util.concurrent.ScheduledThreadPoolExecutor;
+import java.util.concurrent.ThreadFactory;
+import java.util.concurrent.TimeUnit;
+import java.util.concurrent.atomic.AtomicInteger;
 import org.threeten.bp.Duration;
 
 /** Options for the Cloud Spanner service. */
@@ -96,6 +104,7 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
   private final Map<DatabaseId, QueryOptions> mergedQueryOptions;
 
   private final CallCredentialsProvider callCredentialsProvider;
+  private final ExecutorProvider asyncExecutorProvider;
 
   /**
    * Interface that can be used to provide {@link CallCredentials} instead of {@link Credentials} to
@@ -124,6 +133,31 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
     public ServiceRpc create(SpannerOptions options) {
       return new GapicSpannerRpc(options);
     }
+  }
+
+  private static final AtomicInteger DEFAULT_POOL_COUNT = new AtomicInteger();
+
+  /**
+   * Default {@link ExecutorProvider} for high-level async calls that need an executor. The default
+   * uses a cached thread pool containing a max of 8 threads. The pool is lazily initialized and
+   * will not create any threads if the user application does not use any async methods. It will
+   * also scale down the thread usage if the async load allows for that.
+   */
+  @VisibleForTesting
+  static ExecutorProvider createDefaultAsyncExecutorProvider() {
+    return createAsyncExecutorProvider(8, 60L, TimeUnit.SECONDS);
+  }
+
+  @VisibleForTesting
+  static ExecutorProvider createAsyncExecutorProvider(
+      int poolSize, long keepAliveTime, TimeUnit unit) {
+    String format = String.format("async-pool-%d-thread-%%d", DEFAULT_POOL_COUNT.incrementAndGet());
+    ThreadFactory threadFactory =
+        new ThreadFactoryBuilder().setDaemon(true).setNameFormat(format).build();
+    ScheduledThreadPoolExecutor executor = new ScheduledThreadPoolExecutor(poolSize, threadFactory);
+    executor.setKeepAliveTime(keepAliveTime, unit);
+    executor.allowCoreThreadTimeOut(true);
+    return FixedExecutorProvider.create(executor);
   }
 
   private SpannerOptions(Builder builder) {
@@ -165,6 +199,9 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
       this.mergedQueryOptions = ImmutableMap.copyOf(merged);
     }
     callCredentialsProvider = builder.callCredentialsProvider;
+    asyncExecutorProvider =
+        MoreObjects.firstNonNull(
+            builder.asyncExecutorProvider, createDefaultAsyncExecutorProvider());
   }
 
   /**
@@ -228,6 +265,7 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
     private Duration partitionedDmlTimeout = Duration.ofHours(2L);
     private Map<DatabaseId, QueryOptions> defaultQueryOptions = new HashMap<>();
     private CallCredentialsProvider callCredentialsProvider;
+    private ExecutorProvider asyncExecutorProvider;
     private String emulatorHost = System.getenv("SPANNER_EMULATOR_HOST");
 
     private Builder() {}
@@ -244,6 +282,7 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
       this.partitionedDmlTimeout = options.partitionedDmlTimeout;
       this.defaultQueryOptions = options.defaultQueryOptions;
       this.callCredentialsProvider = options.callCredentialsProvider;
+      this.asyncExecutorProvider = options.asyncExecutorProvider;
       this.channelProvider = options.channelProvider;
       this.channelConfigurator = options.channelConfigurator;
       this.interceptorProvider = options.interceptorProvider;
@@ -607,6 +646,10 @@ public class SpannerOptions extends ServiceOptions<Spanner, SpannerOptions> {
       options = this.envQueryOptions;
     }
     return options;
+  }
+
+  public ExecutorProvider getAsyncExecutorProvider() {
+    return asyncExecutorProvider;
   }
 
   public int getPrefetchChunks() {
