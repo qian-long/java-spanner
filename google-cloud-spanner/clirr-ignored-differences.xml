@@ -11,4 +11,46 @@
     <className>com/google/cloud/spanner/spi/v1/SpannerRpc</className>
     <method>* asyncDeleteSession(*)</method>
   </difference>
+  
+  <!-- Add Async API -->
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/DatabaseClient</className>
+    <method>* runAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/ReadContext</className>
+    <method>* executeQueryAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/ReadContext</className>
+    <method>* readAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/ReadContext</className>
+    <method>* readRowAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/ReadContext</className>
+    <method>* readUsingIndexAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/ReadContext</className>
+    <method>* readRowUsingIndexAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/TransactionContext</className>
+    <method>* executeUpdateAsync(*)</method>
+  </difference>
+  <difference>
+    <differenceType>7012</differenceType>
+    <className>com/google/cloud/spanner/spi/v1/SpannerRpc</className>
+    <method>* executeQueryAsync(*)</method>
+  </difference>
 </differences>
